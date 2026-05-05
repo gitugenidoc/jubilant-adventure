@@ -1,0 +1,26 @@
+{
+  "name": "genidoc-hayat",
+  "main": "backend/src/server.js",
+  "compatibility_date": "2024-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS",
+      "bucket_name": "genidoc-hospital-docs"
+    }
+  ],
+  "hyperdrive": [
+    {
+      "binding": "DATABASE",
+      "id": "placeholder-id-to-be-replaced-after-creation"
+    }
+  ],
+  "assets": {
+    "directory": "frontend/dist",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "NODE_ENV": "production",
+    "API_ROOT": "/api"
+  }
+}
