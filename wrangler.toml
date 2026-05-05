@@ -3,16 +3,17 @@
   "main": "backend/src/server.js",
   "compatibility_date": "2024-01-01",
   "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "genidoc-db",
+      "database_id": "placeholder-id-to-be-replaced-after-creation"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "DOCUMENTS",
       "bucket_name": "genidoc-hospital-docs"
-    }
-  ],
-  "hyperdrive": [
-    {
-      "binding": "DATABASE",
-      "id": "placeholder-id-to-be-replaced-after-creation"
     }
   ],
   "assets": {
