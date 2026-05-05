@@ -4,9 +4,9 @@ compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [[d1_databases]]
-binding = "DB"
-database_name = "genidoc-db"
-database_id = "placeholder-id-to-be-replaced-after-creation"
+binding = "genidoc_db1"
+database_name = "genidoc-db1"
+database_id = "b280bdaf-52dc-447e-8fd6-1274889211ac"
 
 [[r2_buckets]]
 binding = "DOCUMENTS"
