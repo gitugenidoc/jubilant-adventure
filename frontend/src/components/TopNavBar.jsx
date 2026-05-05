@@ -1,94 +1,46 @@
-import { useState } from "react";
-import Logo from "./Logo";
-
-export default function TopNavBar({ onLoginClick }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
+export const TopNavBar = () => {
   return (
-    <nav className="bg-white shadow fixed w-full top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-        <Logo size="md" showText={true} />
-
-        {/* Desktop Menu */}
-        <div className="hidden md:flex items-center gap-8">
+    <nav className="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 shadow-sm dark:shadow-none font-['Sora'] text-sm font-medium tracking-tight">
+      <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
+        <img
+          src="/public/images/GeniDoc_IeHF2025.png"
+          alt="GeniDoc Hayat"
+          className="h-16"
+        />
+        <div className="hidden md:flex space-x-8">
           <a
-            href="#features"
-            className="text-gray-600 hover:text-blue-600 transition"
+            href="#"
+            className="text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors"
           >
-            Fonctionnalités
+            Solutions
           </a>
           <a
-            href="#benefits"
-            className="text-gray-600 hover:text-blue-600 transition"
+            href="#"
+            className="text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors"
           >
-            Avantages
+            Patients
           </a>
           <a
-            href="#security"
-            className="text-gray-600 hover:text-blue-600 transition"
+            href="#"
+            className="text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors"
           >
-            Sécurité
+            Médecins
           </a>
           <a
-            href="#faq"
-            className="text-gray-600 hover:text-blue-600 transition"
+            href="#"
+            className="text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors"
           >
-            FAQ
+            À propos
           </a>
-          <button
-            onClick={onLoginClick}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-semibold"
-          >
-            Connexion
+        </div>
+        <div className="flex items-center space-x-4">
+          <button className="px-5 py-2.5 bg-primary-container text-on-primary-container rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-all font-semibold">
+            Commencer
           </button>
         </div>
-
-        {/* Mobile Menu Button */}
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="md:hidden flex flex-col gap-1"
-        >
-          <span className="w-6 h-0.5 bg-gray-800 block"></span>
-          <span className="w-6 h-0.5 bg-gray-800 block"></span>
-          <span className="w-6 h-0.5 bg-gray-800 block"></span>
-        </button>
       </div>
-
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden bg-white border-t">
-          <a
-            href="#features"
-            className="block px-4 py-3 text-gray-600 hover:text-blue-600"
-          >
-            Fonctionnalités
-          </a>
-          <a
-            href="#benefits"
-            className="block px-4 py-3 text-gray-600 hover:text-blue-600"
-          >
-            Avantages
-          </a>
-          <a
-            href="#security"
-            className="block px-4 py-3 text-gray-600 hover:text-blue-600"
-          >
-            Sécurité
-          </a>
-          <a
-            href="#faq"
-            className="block px-4 py-3 text-gray-600 hover:text-blue-600"
-          >
-            FAQ
-          </a>
-          <button
-            onClick={onLoginClick}
-            className="w-full mx-4 mb-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition font-semibold"
-          >
-            Connexion
-          </button>
-        </div>
-      )}
     </nav>
   );
-}
+};
+
+export default TopNavBar;
