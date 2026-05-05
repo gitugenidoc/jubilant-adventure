@@ -1,0 +1,1051 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== IDENTITÉ & ACCÈS ====================
+
+model User {
+  id                 String   @id @default(cuid())
+  email              String   @unique
+  emailVerified      Boolean  @default(false)
+  firstname          String
+  lastname           String
+  phoneNumber        String?
+  password           String   // Argon2 hashed
+  mfaEnabled         Boolean  @default(false)
+  mfaSecret          String?  // Base32 encoded for TOTP
+  lastLogin          DateTime?
+  isActive           Boolean  @default(true)
+  
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  facilityId         String?
+  facility           Facility? @relation(fields: [facilityId], references: [id])
+  
+  careUnitId         String?
+  careUnit           CareUnit? @relation(fields: [careUnitId], references: [id])
+  
+  practitionerId     String?  // Link to Practitioner if applicable
+  practitioner       Practitioner? @relation("UserPractitioner", fields: [practitionerId], references: [id])
+  
+  roles              UserRole[]
+  permissions        UserPermission[]
+  
+  createdEncounters  Encounter[] @relation("CreatedByDoctor")
+  createdNotes       ClinicalNote[] @relation("CreatedBy")
+  createdDocuments   Document[] @relation("CreatedBy")
+  
+  auditLogs          AuditLog[] @relation("AuditByUser")
+  securityEvents     SecurityEvent[] @relation("EventByUser")
+  
+  breakGlassAccesses BreakGlassLog[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([organizationId])
+  @@index([facilityId])
+  @@index([email])
+}
+
+model Role {
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  description        String?
+  organizationId     String?
+  organization       Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  permissions        RolePermission[]
+  users              UserRole[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([organizationId])
+}
+
+model Permission {
+  id                 String   @id @default(cuid())
+  name               String   @unique
+  description        String?
+  resource           String   // e.g., "patient", "dpi", "dmp", "prescription"
+  action             String   // e.g., "read", "write", "delete", "sign"
+  
+  roles              RolePermission[]
+  users              UserPermission[]
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([resource])
+  @@index([action])
+}
+
+model UserRole {
+  id        String  @id @default(cuid())
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleId    String
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  
+  assignedAt DateTime @default(now())
+  
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  id           String  @id @default(cuid())
+  roleId       String
+  role         Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  grantedAt    DateTime @default(now())
+  
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+model UserPermission {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  
+  grantedAt    DateTime @default(now())
+  grantedBy    String?  // Admin who granted this
+  
+  @@unique([userId, permissionId])
+  @@index([userId])
+  @@index([permissionId])
+}
+
+// ==================== ORGANISATIONS ====================
+
+model Organization {
+  id                 String   @id @default(cuid())
+  name               String
+  code               String   @unique
+  registrationNumber String?
+  website            String?
+  
+  users              User[]
+  roles              Role[]
+  facilities         Facility[]
+  practitioners      Practitioner[]
+  patients           Patient[]
+  
+  dataProcessingAgreement String? // URL to DPA for CNDP compliance
+  policyVersion     String   @default("1.0")
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model Facility {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  name               String
+  code               String   @unique
+  address            String?
+  phone              String?
+  
+  careUnits          CareUnit[]
+  users              User[]
+  practitioners      Practitioner[]
+  encounters         Encounter[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([organizationId])
+}
+
+model CareUnit {
+  id                 String   @id @default(cuid())
+  facilityId         String
+  facility           Facility @relation(fields: [facilityId], references: [id], onDelete: Cascade)
+  
+  name               String
+  code               String
+  type               String   // "urgences", "chirurgie", "bloc", "pharmacie", "labo", "imagerie"
+  
+  users              User[]
+  practitioners      Practitioner[]
+  encounters         Encounter[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@unique([facilityId, code])
+  @@index([facilityId])
+}
+
+// ==================== PATIENTS ====================
+
+model Patient {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  // Identité
+  firstName          String
+  lastName           String
+  dateOfBirth        DateTime
+  gender             String   // "M", "F", "O"
+  
+  // Contact
+  email              String?
+  phoneNumber        String?
+  address            String?
+  
+  // Identifiants
+  identifiers        PatientIdentifier[]
+  
+  // Contacts & Insurance
+  contacts           PatientContact[]
+  insurances         PatientInsurance[]
+  
+  // Médecin traitant
+  gpId               String?
+  gp                 Practitioner? @relation("PatientGP", fields: [gpId], references: [id])
+  
+  // Relations cliniques
+  encounters         Encounter[]
+  episodes           EpisodeOfCare[]
+  conditions         Condition[]
+  allergies          Allergy[]
+  observations       Observation[]
+  
+  // DPI & DMP
+  dpiRecords         DpiRecord[]
+  dmpRecords         DmpRecord[]
+  
+  // Consentement
+  consents           PatientConsent[]
+  
+  // Carte digitale
+  digitalCards       PatientDigitalCard[]
+  
+  // Audit
+  auditAccess        AuditLog[] @relation("AuditPatient")
+  
+  // Statut
+  mergedWith         String?  // ID du patient master si fusion
+  isMerged           Boolean  @default(false)
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime? // Soft delete
+  
+  @@index([organizationId])
+  @@index([email])
+  @@index([phoneNumber])
+  @@index([mergedWith])
+}
+
+model PatientIdentifier {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  type               String   // "local", "national", "insurance", "passport"
+  value              String
+  issuer             String?
+  
+  isActive           Boolean  @default(true)
+  verifiedAt         DateTime?
+  
+  createdAt          DateTime @default(now())
+  
+  @@unique([patientId, type, value])
+  @@index([patientId])
+  @@index([value])
+}
+
+model PatientContact {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  name               String
+  relationship       String   // "parent", "conjoint", "enfant", "autre"
+  phone              String?
+  email              String?
+  
+  isEmergencyContact Boolean  @default(false)
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+}
+
+model PatientInsurance {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  insurerName        String
+  policyNumber       String
+  groupNumber        String?
+  
+  isActive           Boolean  @default(true)
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([policyNumber])
+}
+
+// ==================== PRATICIENS ====================
+
+model Practitioner {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  firstName          String
+  lastName           String
+  title              String?  // "Dr", "Pr"
+  
+  license            String   @unique
+  specialties        PractitionerSpecialty[]
+  
+  facilities         Facility[]
+  careUnits          CareUnit[]
+  
+  patientsAsGP       Patient[] @relation("PatientGP")
+  users              User[] @relation("UserPractitioner")
+  
+  encounters         Encounter[] @relation("Practitioner")
+  prescriptions      Prescription[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([organizationId])
+  @@index([license])
+}
+
+model PractitionerSpecialty {
+  id                 String   @id @default(cuid())
+  practitionerId     String
+  practitioner       Practitioner @relation(fields: [practitionerId], references: [id], onDelete: Cascade)
+  
+  specialty          String   // "cardiologie", "chirurgie", "anesthésie"
+  certifications     String?
+  
+  @@index([practitionerId])
+}
+
+// ==================== EPISODES & ENCOUNTERS ====================
+
+model EpisodeOfCare {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  status             String   @default("planned") // planned, active, onhold, finished, cancelled, entered-in-error
+  type               String   // "consultation", "hospitalization", "emergency", "surgery"
+  
+  startDate          DateTime
+  endDate            DateTime?
+  
+  encounters         Encounter[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+}
+
+model Encounter {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  episodeId          String?
+  episode            EpisodeOfCare? @relation(fields: [episodeId], references: [id])
+  
+  facilityId         String
+  facility           Facility @relation(fields: [facilityId], references: [id])
+  
+  careUnitId         String
+  careUnit           CareUnit @relation(fields: [careUnitId], references: [id])
+  
+  practitionerId     String
+  practitioner       Practitioner @relation("Practitioner", fields: [practitionerId], references: [id])
+  
+  type               String   // "ambulatory", "emergency", "inpatient", "virtual"
+  status             String   @default("in-progress") // in-progress, finished, cancelled, entered-in-error, unknown
+  
+  reason             String?
+  diagnosis          String?
+  
+  startDateTime      DateTime @default(now())
+  endDateTime        DateTime?
+  
+  notes              ClinicalNote[]
+  clinicalObservations Observation[]
+  prescriptions      Prescription[]
+  procedures         Procedure[]
+  diagnosticReports  DiagnosticReport[]
+  
+  createdBy          String
+  createdByDoctor    User @relation("CreatedByDoctor", fields: [createdBy], references: [id])
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([facilityId])
+  @@index([careUnitId])
+  @@index([practitionerId])
+  @@index([episodeId])
+}
+
+// ==================== DONNÉES CLINIQUES ====================
+
+model ClinicalNote {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  encounterId        String?
+  encounter          Encounter? @relation(fields: [encounterId], references: [id])
+  
+  type               String   // "consultation", "nursing", "anesthesia", "surgery", "follow-up"
+  title              String
+  content            String   @db.Text
+  
+  author             String
+  authorUser         User @relation("CreatedBy", fields: [author], references: [id])
+  
+  status             String   @default("draft") // draft, signed, finalized
+  signedAt           DateTime?
+  signedBy           String?
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([encounterId])
+  @@index([author])
+}
+
+model Condition {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  code               String   // ICD-10 code
+  display            String
+  
+  status             String   @default("active") // active, recurrence, relapse, inactive, resolved, entered-in-error
+  category           String?  // "diagnosis", "symptom", "condition"
+  
+  onsetDate          DateTime?
+  abatementDate      DateTime?
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([code])
+}
+
+model Allergy {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  substance          String   // e.g., "Penicillin", "Shellfish"
+  substanceCode      String?
+  
+  reaction           String   // "rash", "anaphylaxis", "hives"
+  severity           String   @default("moderate") // mild, moderate, severe
+  
+  status             String   @default("active") // active, inactive, resolved, entered-in-error
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([substanceCode])
+}
+
+model Observation {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  encounterId        String?
+  encounter          Encounter? @relation(fields: [encounterId], references: [id])
+  
+  code               String   // LOINC code e.g., "8480-6"
+  display            String   // e.g., "Systolic blood pressure"
+  
+  value              String
+  unit               String?
+  
+  status             String   @default("final") // preliminary, final, amended
+  observedDateTime   DateTime @default(now())
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([patientId])
+  @@index([encounterId])
+  @@index([code])
+}
+
+model Procedure {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  encounterId        String
+  encounter          Encounter @relation(fields: [encounterId], references: [id])
+  
+  code               String   // CCAM or ICD code
+  display            String
+  
+  status             String   @default("completed") // preparation, in-progress, not-done, on-hold, stopped, completed, entered-in-error, unknown
+  performedDateTime  DateTime
+  
+  location           String?
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([encounterId])
+}
+
+model DiagnosticReport {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  encounterId        String?
+  encounter          Encounter? @relation(fields: [encounterId], references: [id])
+  
+  code               String   // Test name/code
+  display            String
+  
+  status             String   @default("preliminary") // registered, partial, preliminary, final, amended, corrected, appended, cancelled, entered-in-error, unknown
+  category           String   // "laboratory", "imaging", "cardiology"
+  
+  result             String?  @db.Text
+  interpretation     String?
+  
+  issuedDateTime     DateTime @default(now())
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([encounterId])
+  @@index([code])
+}
+
+// ==================== PRESCRIPTIONS ====================
+
+model Prescription {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  encounterId        String?
+  encounter          Encounter? @relation(fields: [encounterId], references: [id])
+  
+  practitionerId     String
+  practitioner       Practitioner @relation(fields: [practitionerId], references: [id])
+  
+  medicationCode     String   // Drug code
+  medicationDisplay  String
+  
+  dosage             String
+  frequency          String
+  duration           String?
+  
+  instructions       String?
+  
+  status             String   @default("draft") // draft, active, completed, cancelled, stopped, on-hold
+  signedAt           DateTime?
+  signedBy           String?
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([practitionerId])
+  @@index([encounterId])
+}
+
+// ==================== DPI - DOSSIER PATIENT INFORMATISÉ ====================
+
+model DpiRecord {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  facilityId         String
+  
+  // Synthèse pour accès rapide
+  synopsis           String?  @db.Text
+  
+  documents          Document[]
+  
+  lastModifiedAt     DateTime @updatedAt
+  createdAt          DateTime @default(now())
+  
+  @@unique([patientId, facilityId])
+  @@index([patientId])
+}
+
+// ==================== DMP - DOSSIER MÉDICAL PARTAGÉ ====================
+
+model DmpRecord {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // Documents autorisés à partager
+  documents          DmpPublication[]
+  
+  // Accès autorisés
+  grantedAccesses    DmpAccess[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@unique([patientId])
+  @@index([patientId])
+}
+
+model DmpPublication {
+  id                 String   @id @default(cuid())
+  dmpId              String
+  dmp                DmpRecord @relation(fields: [dmpId], references: [id], onDelete: Cascade)
+  
+  documentId         String?
+  document           Document? @relation(fields: [documentId], references: [id])
+  
+  type               String   // "document", "synthetic", "summary"
+  title              String
+  content            String?  @db.Text
+  
+  status             String   @default("draft") // draft, published, revoked
+  publishedAt        DateTime?
+  publishedBy        String?  // User who published
+  
+  accessLevel        String   @default("restricted") // public, professionals, restricted
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([dmpId])
+  @@index([documentId])
+  @@index([status])
+}
+
+model DmpAccess {
+  id                 String   @id @default(cuid())
+  dmpId              String
+  dmp                DmpRecord @relation(fields: [dmpId], references: [id], onDelete: Cascade)
+  
+  grantedToId        String   // Practitioner or Organization ID
+  grantedToType      String   // "practitioner", "organization", "patient"
+  
+  accessType         String   @default("read") // read, write, share
+  scopeId            String?  // Encounter, Episode ID if restricted
+  
+  grantedAt          DateTime @default(now())
+  grantedBy          String?
+  
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([dmpId])
+  @@index([grantedToId])
+  @@index([grantedToType])
+}
+
+model DmpAccessLog {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  accessedById       String
+  accessedByType     String   // "user", "app"
+  
+  documentId         String?
+  
+  accessType         String   // "view", "download", "print"
+  
+  accessedAt         DateTime @default(now())
+  
+  @@index([patientId])
+  @@index([accessedById])
+}
+
+// ==================== DOCUMENTS ====================
+
+model Document {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  dpiRecordId        String?
+  dpiRecord          DpiRecord? @relation(fields: [dpiRecordId], references: [id])
+  
+  type               String   // "note", "report", "prescription", "consent"
+  title              String
+  content            String   @db.Text
+  
+  author             String
+  authorUser         User @relation("CreatedBy", fields: [author], references: [id])
+  
+  status             String   @default("draft") // draft, signed, published
+  signedAt           DateTime?
+  signedBy           String?
+  
+  versions           DocumentVersion[]
+  dmpPublications    DmpPublication[]
+  
+  // Storage
+  storageUrl         String?  // S3 or similar
+  mimeType           String?
+  fileHash           String?  // SHA256
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([dpiRecordId])
+  @@index([author])
+}
+
+model DocumentVersion {
+  id                 String   @id @default(cuid())
+  documentId         String
+  document           Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  version            Int
+  content            String   @db.Text
+  
+  createdAt          DateTime @default(now())
+  
+  @@unique([documentId, version])
+  @@index([documentId])
+}
+
+// ==================== CONSENTEMENT ====================
+
+model PatientConsent {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  type               String   // "dmp_creation", "dmp_sharing", "research", "telemedicine"
+  purpose            String   @db.Text
+  scope              String   // "all_data", "limited_data", "specific_encounter"
+  
+  status             String   @default("pending") // pending, granted, revoked, expired
+  
+  grantedAt          DateTime?
+  grantedBy          String?  // User/Patient
+  revokedAt          DateTime?
+  revokedBy          String?
+  
+  expiresAt          DateTime?
+  
+  consentText        String   @db.Text
+  consentVersion     String   @default("1.0")
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([type])
+  @@index([status])
+}
+
+// ==================== CARTE DIGITALE PATIENT ====================
+
+model PatientDigitalCard {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  cardNumber         String   @unique  // Can be printed if needed
+  qrCode             String   @db.Text // SVG or PNG base64
+  
+  status             String   @default("active") // active, inactive, revoked, expired
+  
+  issuedAt           DateTime @default(now())
+  expiresAt          DateTime @default(now() + interval '2 years')
+  
+  accessTokens       CardAccessToken[]
+  scanEvents         CardScanEvent[]
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@index([patientId])
+  @@index([cardNumber])
+}
+
+model CardAccessToken {
+  id                 String   @id @default(cuid())
+  cardId             String
+  card               PatientDigitalCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  
+  token              String   @unique  // JWT or ULID
+  tokenHash          String   @unique  // SHA256 hash of token for DB storage
+  
+  accessType         String   // "patient", "practitioner", "emergency", "delegated"
+  
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  
+  usedAt             DateTime?  // When first used
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([cardId])
+  @@index([token])
+}
+
+model CardScanEvent {
+  id                 String   @id @default(cuid())
+  cardId             String
+  card               PatientDigitalCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  
+  scannedById        String?  // User ID who scanned
+  scannedByType      String?  // "practitioner", "patient", "system"
+  
+  accessGranted      Boolean
+  reason             String?  // Why access was granted or denied
+  
+  deviceInfo         String?
+  ipAddress          String?
+  
+  scannedAt          DateTime @default(now())
+  
+  @@index([cardId])
+}
+
+model DelegatedAccess {
+  id                 String   @id @default(cuid())
+  patientId          String
+  patient            Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  delegatedToId      String   // Practitioner or Representative ID
+  delegatedToType    String   // "practitioner", "representative"
+  
+  scopeType          String   // "full_dmp", "limited_data", "specific_encounter"
+  scopeId            String?  // If limited
+  
+  status             String   @default("active") // active, pending, revoked
+  
+  grantedAt          DateTime @default(now())
+  expiresAt          DateTime?
+  revokedAt          DateTime?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([patientId])
+}
+
+// ==================== AUDIT & SÉCURITÉ ====================
+
+model AuditLog {
+  id                 String   @id @default(cuid())
+  
+  // Who & What
+  userId             String
+  user               User @relation("AuditByUser", fields: [userId], references: [id])
+  
+  action             String   // "read", "create", "update", "delete", "sign", "publish"
+  resource           String   // "patient", "dpi", "dmp", "document"
+  resourceId         String
+  
+  // Patient context
+  patientId          String?
+  patient            Patient? @relation("AuditPatient", fields: [patientId], references: [id])
+  
+  // Détails
+  details            String?  @db.Text // JSON stringified
+  reason             String?  // Why, especially for sensitive actions
+  
+  // Contexte technique
+  ipAddress          String?
+  userAgent          String?
+  
+  // Intégrité
+  resultHash         String?  // Hash of result for integrity checking
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([userId])
+  @@index([patientId])
+  @@index([action])
+  @@index([resource])
+  @@index([createdAt])
+}
+
+model SecurityEvent {
+  id                 String   @id @default(cuid())
+  
+  type               String   // "failed_login", "permission_denied", "suspicious_activity"
+  severity           String   // "low", "medium", "high", "critical"
+  
+  userId             String?
+  user               User? @relation("EventByUser", fields: [userId], references: [id])
+  
+  description        String   @db.Text
+  
+  ipAddress          String?
+  userAgent          String?
+  
+  resolved           Boolean  @default(false)
+  resolvedAt         DateTime?
+  resolvedBy         String?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([type])
+  @@index([severity])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model BreakGlassLog {
+  id                 String   @id @default(cuid())
+  
+  userId             String
+  user               User @relation(fields: [userId], references: [id])
+  
+  patientId          String?
+  
+  justification      String   @db.Text
+  reason             String   // "emergency", "research", "follow-up"
+  
+  dataAccessed       String   // JSON array of data types accessed
+  
+  ipAddress          String?
+  duration           Int?     // In seconds
+  
+  supervisorReview   String?  // Was it reviewed and approved?
+  reviewedAt         DateTime?
+  reviewedBy         String?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ==================== INTEROPÉRABILITÉ ====================
+
+model FhirMapping {
+  id                 String   @id @default(cuid())
+  
+  localResourceType  String   // Our table name
+  localResourceId    String
+  
+  fhirResourceType   String   // FHIR resource type
+  fhirId             String   @unique
+  
+  fhirPayload        String   @db.Text // Full FHIR JSON
+  
+  mappingVersion     String   @default("R4")
+  
+  lastSyncedAt       DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  
+  @@unique([localResourceType, localResourceId, fhirResourceType])
+  @@index([localResourceType])
+  @@index([fhirResourceType])
+}
+
+model InteropMessage {
+  id                 String   @id @default(cuid())
+  
+  messageType        String   // "hl7v2", "fhir", "dicom", "xds"
+  direction          String   // "inbound", "outbound"
+  status             String   @default("pending") // pending, processed, failed, archived
+  
+  sourceSystem       String?
+  targetSystem       String?
+  
+  payload            String   @db.Text
+  
+  errorMessage       String?
+  retryCount         Int      @default(0)
+  
+  processedAt        DateTime?
+  processedBy        String?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([status])
+  @@index([messageType])
+  @@index([createdAt])
+}
+
+model WebhookEvent {
+  id                 String   @id @default(cuid())
+  
+  eventType          String   // "patient.created", "encounter.completed", "document.published"
+  resourceType       String
+  resourceId         String
+  
+  payload            String   @db.Text
+  
+  delivered          Boolean  @default(false)
+  deliveredAt        DateTime?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([eventType])
+  @@index([delivered])
+}
+
+model EventBusMessage {
+  id                 String   @id @default(cuid())
+  
+  eventType          String   // "PATIENT_CREATED", "PRESCRIPTION_VALIDATED"
+  aggregateType      String   // "Patient", "Prescription"
+  aggregateId        String
+  
+  payload            String   @db.Text
+  
+  processedAt        DateTime?
+  
+  createdAt          DateTime @default(now())
+  
+  @@index([eventType])
+  @@index([aggregateType])
+  @@index([processedAt])
+}

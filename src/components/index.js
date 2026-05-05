@@ -1,0 +1,13 @@
+export { default as TopNavBar } from "./TopNavBar";
+export { default as HeroSection } from "./HeroSection";
+export { default as ProblemSolution } from "./ProblemSolution";
+export { default as HowItWorks } from "./HowItWorks";
+export { default as Stats } from "./Stats";
+export { default as Certifications } from "./Certifications";
+export { default as SecurityCompliance } from "./SecurityCompliance";
+export { default as Testimonials } from "./Testimonials";
+export { default as FAQ } from "./FAQ";
+export { default as FinalCTA } from "./FinalCTA";
+export { default as Benefits } from "./Benefits";
+export { default as Features } from "./Features";
+export { default as Footer } from "./Footer";
