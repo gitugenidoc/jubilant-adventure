@@ -1,4 +1,8 @@
+import { useNavigate } from "react-router-dom";
+
 export const HeroSection = () => {
+  const navigate = useNavigate();
+
   return (
     <section className="relative pt-24 pb-32 overflow-hidden">
       <div className="max-w-7xl mx-auto px-container-padding-mobile md:px-container-padding-desktop">
@@ -23,18 +27,18 @@ export const HeroSection = () => {
               </span>
             </p>
             <div className="flex flex-wrap gap-4">
-              <a
-                href="auth.html"
-                className="bg-secondary text-on-secondary px-8 py-4 rounded-lg font-h3 text-[16px] hover:opacity-90 transition-opacity font-semibold inline-block"
+              <button
+                onClick={() => navigate("/login")}
+                className="bg-blue-600 text-white px-8 py-4 rounded-lg font-h3 text-[16px] hover:opacity-90 transition-opacity font-semibold inline-block"
               >
                 Démarrer gratuitement
-              </a>
-              <a
-                href="#demo"
-                className="bg-transparent border-2 border-secondary text-secondary px-8 py-4 rounded-lg font-h3 text-[16px] hover:bg-surface-container-low transition-colors inline-block"
+              </button>
+              <button
+                onClick={() => navigate("/demo")}
+                className="bg-transparent border-2 border-blue-600 text-blue-600 px-8 py-4 rounded-lg font-h3 text-[16px] hover:bg-blue-50 transition-colors inline-block"
               >
                 Demander une démo
-              </a>
+              </button>
             </div>
             <p className="text-sm text-on-surface-variant font-body-sm">
               ✓ Installation en 5 min · ✓ Pas de carte bancaire requise · ✓
